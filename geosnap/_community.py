@@ -3,6 +3,7 @@ from warnings import warn
 
 import contextily as ctx
 import geopandas as gpd
+import mapclassify as mc
 import matplotlib.pyplot as plt
 import pandas as pd
 import scikitplot as skplt
@@ -713,13 +714,12 @@ class Community:
                ncols=None,
                nrows=None,
                ctxmap=ctx.providers.OpenStreetMap.Mapnik,
+               classifier=mc.Quantiles,
                **kwargs):
         """
         Function for plotting timeseries data from community objects.
         Parameters
         ----------
-        community    : community object
-                       community object
         column       : str
                        column to be graphed in a time series
         title        : str, optional
@@ -767,23 +767,42 @@ class Community:
                 f, axs = plot.subplots(ncols=len(self.gdf.year.unique()))
             else:
                 f, axs = plot.subplots(ncols=ncols, nrows=nrows)
-            for i, year in enumerate(sorted(self.gdf.year.unique())):  # sort to prevent graphing out of order
-                self.gdf[self.gdf.year == year].plot(column=column, ax=axs[i], scheme=scheme, k=k, **kwargs,
-                                                     legend=True, legend_kwds=legend_kwds)
-                if ctxmap:  # need set basemap of each graph
-                    ctx.add_basemap(axs[i], source=ctxmap)
-                axs[i].format(title=year)
+            if classifier:
+                classified = classifier(self.gdf[column].values, k)
+                for i, year in enumerate(sorted(self.gdf.year.unique())):  # sort to prevent graphing out of order
+                    self.gdf.assign(cl=classified.yb)[self.gdf.year == year].plot(column='cl', ax=axs[i], scheme=scheme, k=k, **kwargs,
+                                                        legend=True, legend_kwds=legend_kwds)
+                    if ctxmap:  # set basemap of each graph
+                        ctx.add_basemap(axs[i], source=ctxmap)
+                    axs[i].format(title=year)
+                    # f.legend(labels=leg_labels,)
+            else:
+                for i, year in enumerate(sorted(self.gdf.year.unique())):  # sort to prevent graphing out of order
+                    self.gdf[self.gdf.year == year].plot(column=column, ax=axs[i], scheme=scheme, k=k, **kwargs,
+                                                         legend=True, legend_kwds=legend_kwds)
+                    if ctxmap:  # set basemap of each graph
+                        ctx.add_basemap(axs[i], source=ctxmap)
+                    axs[i].format(title=year)
         else:
             if nrows is None and ncols is None:
                 f, axs = plot.subplots(ncols=len(years))
             else:
                 f, axs = plot.subplots(ncols=ncols, nrows=nrows)
-            for i, year in enumerate(years):  # display in whatever order list is passed in
-                self.gdf[self.gdf.year == year].plot(column=column, ax=axs[i], scheme=scheme, k=k, **kwargs,
+            if classifier:
+                classified = classifier(self.gdf[column].loc[self.gdf.year.isin(years)].values, k)
+                for i, year in enumerate(years):  # display in whatever order list is passed in
+                    self.gdf.assign(cl=classified.yb)[self.gdf.year == year].plot(column='cl', ax=axs[i], scheme=scheme, k=k, **kwargs,
                                                      legend=True, legend_kwds=legend_kwds)
-                if ctxmap:  # need set basemap of each graph
-                    ctx.add_basemap(axs[i], source=ctxmap)
-                axs[i].format(title=year)
+                    if ctxmap:  # need set basemap of each graph
+                        ctx.add_basemap(axs[i], source=ctxmap)
+                    axs[i].format(title=year)
+            else:
+                for i, year in enumerate(years):  # display in whatever order list is passed in
+                    self.gdf[self.gdf.year == year].plot(column=column, ax=axs[i], scheme=scheme, k=k, **kwargs,
+                                                         legend=True, legend_kwds=legend_kwds)
+                    if ctxmap:  # need set basemap of each graph
+                        ctx.add_basemap(axs[i], source=ctxmap)
+                    axs[i].format(title=year)
 
         if not title:  # only use title when passed
             axs.format(suptitle=column)
@@ -793,7 +812,7 @@ class Community:
 
         if save_fig:
             f.savefig(save_fig, dpi=dpi, bbox_inches='tight')
-        return axs
+        return axs, classified
 
     def transition(
             self, cluster_col, time_var="year", id_var="geoid", w_type=None, permutations=0
